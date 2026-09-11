@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
 import {
   BookOpen,
   Check,
@@ -18,8 +18,7 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import { LEVELS } from './lib/level-data.ts';
-import { CHAPTERS, chapterOf } from './lib/chapters.ts';
+import { CAMPAIGN_CHAPTERS, STORY_CHAPTERS, chapterIndex, type Chapter } from './lib/chapters.ts';
 import {
   NOTE,
   automaticExclusions,
@@ -32,15 +31,19 @@ import {
 import { nextHint, type Hint } from './lib/hints.ts';
 import { DIR_NAMES, UNITS, UNIT_IDS, decodePiece, encodePiece, type Dir, type UnitId } from './lib/units.ts';
 import {
+  BANKS,
   PREFS_KEY,
   SAVE_KEY,
   canOpen,
+  completedIn,
   emptyProgress,
   emptySession,
   parseProgress,
   recordSession,
   unlockedLevel,
+  type Mode,
   type Progress,
+  type Selection,
 } from './lib/progress.ts';
 import { Board, type Tool } from './components/Board.tsx';
 import { Modal } from './components/Modal.tsx';
@@ -49,11 +52,21 @@ import { PieceToken, RangeDiagram, EnemyToken } from './components/PieceToken.ts
 export const GAME_NAME = '陣格';
 const UNITS_PER_LINE = 2;
 const BASE_MESSAGE = '每列、每欄、每個陣地各部署 2 個單位，並覆蓋所有敵軍';
+const CHAPTERS: Record<Mode, Chapter[]> = { story: STORY_CHAPTERS, campaign: CAMPAIGN_CHAPTERS };
+const MODE_NAME: Record<Mode, string> = { story: '劇情模式', campaign: '關卡模式' };
+const CHAPTER_WORD: Record<Mode, string> = { story: '章', campaign: '大關' };
 const formatTime = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-const openingMessage = (i: number) => {
-  const chapter = CHAPTERS[chapterOf(i)];
-  return i === chapter.from ? chapter.intro : BASE_MESSAGE;
+const levelLabel = ({ mode, level }: Selection) => {
+  if (mode === 'story') return `第 ${level + 1} 關`;
+  const chapter = CAMPAIGN_CHAPTERS[chapterIndex(CAMPAIGN_CHAPTERS, level)];
+  return `${chapterIndex(CAMPAIGN_CHAPTERS, level) + 1}－${String(level - chapter.from + 1).padStart(2, '0')}`;
+};
+const openingMessage = ({ mode, level }: Selection) => {
+  const c = chapterIndex(CHAPTERS[mode], level),
+    chapter = CHAPTERS[mode][c];
+  if (level !== chapter.from) return BASE_MESSAGE;
+  return mode === 'story' ? chapter.intro : `第 ${c + 1} 大關「${chapter.name}」：${chapter.intro}`;
 };
 
 function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -71,7 +84,8 @@ export function App() {
   const [view, setView] = useState<'home' | 'play'>('home');
   const [progress, setProgress] = useState<Progress>(emptyProgress);
   const [hydrated, setHydrated] = useState(false);
-  const [levelIndex, setLevelIndex] = useState(0);
+  const [selection, setSelection] = useState<Selection>({ mode: 'story', level: 0 });
+  const [picker, setPicker] = useState<Mode>('story');
   const [tool, setTool] = useState<Tool>(0);
   const [prefs, setPrefs] = useState({ auto: true, ranges: true });
   const [history, setHistory] = useState<BoardState[]>([]);
@@ -80,7 +94,9 @@ export function App() {
   const [dialog, setDialog] = useState<null | 'rules' | 'levels' | 'reset'>(null);
   const [storageMessage, setStorageMessage] = useState('');
 
-  const level = LEVELS[levelIndex],
+  const { mode, level: levelIndex } = selection,
+    bank = BANKS[mode],
+    level = bank[levelIndex],
     n = level.regions.length,
     session = progress.records[level.id] ?? emptySession(n),
     board = session.board;
@@ -93,10 +109,12 @@ export function App() {
   const suppressed = level.enemies.filter((e) => covered.has(e)).length,
     placed = used.reduce((a, b) => a + b, 0),
     total = n * UNITS_PER_LINE,
-    chapterIndex = chapterOf(levelIndex),
-    chapter = CHAPTERS[chapterIndex],
+    chapters = CHAPTERS[mode],
+    chapterNo = chapterIndex(chapters, levelIndex),
+    chapter = chapters[chapterNo],
     unitChoices = UNIT_IDS.filter((u) => level.quotas[u] > 0),
-    canNext = canOpen(progress, levelIndex + 1);
+    nextSelection = { mode, level: levelIndex + 1 },
+    canNext = canOpen(progress, nextSelection);
 
   useEffect(() => {
     try {
@@ -145,26 +163,30 @@ export function App() {
   }, [hydrated, view, solved, board, dialog, level.id]);
 
   const openLevel = useCallback(
-    (i: number) => {
-      if (!hydrated || !canOpen(progress, i)) return;
-      const next = LEVELS[i];
-      setLevelIndex(i);
-      setProgress((p) => ({ ...p, last: i }));
+    (target: Selection) => {
+      if (!hydrated || !canOpen(progress, target)) return;
+      const next = BANKS[target.mode][target.level];
+      setSelection(target);
+      setProgress((p) => ({ ...p, last: target }));
       setHistory([]);
       setHint(null);
-      setMessage(openingMessage(i));
+      setMessage(openingMessage(target));
       setTool((t) => (typeof t === 'number' && next.quotas[t] > 0 ? t : (next.quotas.findIndex((q) => q > 0) as UnitId)));
       setDialog(Object.keys(progress.records).length === 0 ? 'rules' : null);
       setView('play');
     },
     [hydrated, progress],
   );
+  const openPicker = (target: Mode) => {
+    setPicker(target);
+    setDialog('levels');
+  };
 
   const commit = (next: BoardState, feedback?: string) => {
     setHistory((h) => [...h.slice(-99), board]);
     const nextSolved = isSolved(level, next);
     setProgress((p) =>
-      recordSession(p, levelIndex, { ...(p.records[level.id] ?? emptySession(n)), board: next }, nextSolved),
+      recordSession(p, level.id, { ...(p.records[level.id] ?? emptySession(n)), board: next }, nextSolved),
     );
     setHint(null);
     if (nextSolved) navigator.vibrate?.([40, 30, 70]);
@@ -221,7 +243,7 @@ export function App() {
     if (!previous) return;
     setHistory((h) => h.slice(0, -1));
     setProgress((p) =>
-      recordSession(p, levelIndex, { ...(p.records[level.id] ?? emptySession(n)), board: previous }, false),
+      recordSession(p, level.id, { ...(p.records[level.id] ?? emptySession(n)), board: previous }, false),
     );
     setHint(null);
     setMessage('已復原上一步。');
@@ -253,8 +275,12 @@ export function App() {
     commit(next, '已套用提示，接著找下一條線索。');
   };
 
-  const completedCount = progress.completed.length;
   const selectedUnit = typeof tool === 'number' ? tool : null;
+  const campaignEntry: Selection = { mode: 'campaign', level: unlockedLevel(progress, 'campaign') };
+  const storyFinished = mode === 'story' && completedIn(progress, 'story') === BANKS.story.length;
+  const pickerBank = BANKS[picker],
+    pickerDone = completedIn(progress, picker),
+    pickerEntry: Selection = { mode: picker, level: unlockedLevel(progress, picker) };
 
   return (
     <div className="app">
@@ -268,36 +294,43 @@ export function App() {
               <h1>{GAME_NAME}</h1>
               <p>佈下我方陣列，覆蓋每一名敵軍</p>
             </div>
-            {progress.last !== null && (
+            {progress.last && (
               <button className="home-btn primary" disabled={!hydrated} onClick={() => openLevel(progress.last!)}>
                 <Play />
-                繼續 · 第 {progress.last + 1} 關
+                繼續 · {MODE_NAME[progress.last.mode]} {levelLabel(progress.last)}
               </button>
             )}
-            <button className="home-btn" disabled={!hydrated} onClick={() => openLevel(unlockedLevel(progress))}>
-              <Swords />
-              {completedCount ? '前往下一場戰役' : '開始戰役'}
-            </button>
-            <button className="home-btn" disabled={!hydrated} onClick={() => setDialog('levels')}>
+            <button className="home-btn" disabled={!hydrated} onClick={() => openPicker('story')}>
               <BookOpen />
-              選擇關卡
+              <span className="home-btn-text">
+                <span>劇情模式</span>
+                <small>
+                  新手教學 · {completedIn(progress, 'story')} / {BANKS.story.length}
+                </small>
+              </span>
+            </button>
+            <button className="home-btn" disabled={!hydrated} onClick={() => openPicker('campaign')}>
+              <Swords />
+              <span className="home-btn-text">
+                <span>關卡模式</span>
+                <small>
+                  {CAMPAIGN_CHAPTERS.length} 大關 · {completedIn(progress, 'campaign')} / {BANKS.campaign.length}
+                </small>
+              </span>
             </button>
             <button className="home-btn" onClick={() => setDialog('rules')}>
               <CircleHelp />
               規則與兵種
             </button>
-            <p className="home-progress">
-              已攻克 {completedCount} / {LEVELS.length} 場戰役
-            </p>
           </section>
         ) : (
           <>
             <header className="topbar">
               <div>
                 <p className="eyebrow">
-                  第 {chapterIndex + 1} 章 · {chapter.name}
+                  {mode === 'story' ? '劇情' : '關卡'} · 第 {chapterNo + 1} {CHAPTER_WORD[mode]} · {chapter.name}
                 </p>
-                <h1>第 {levelIndex + 1} 關</h1>
+                <h1>{mode === 'story' ? levelLabel(selection) : `第 ${levelLabel(selection)} 關`}</h1>
               </div>
               <div className="header-actions">
                 <button className="icon-btn" aria-label="返回主選單" onClick={() => setView('home')}>
@@ -315,19 +348,19 @@ export function App() {
                     className="icon-btn small"
                     aria-label="上一關"
                     disabled={levelIndex === 0}
-                    onClick={() => openLevel(levelIndex - 1)}
+                    onClick={() => openLevel({ mode, level: levelIndex - 1 })}
                   >
                     <ChevronLeft />
                   </button>
-                  <button className="level-pill" onClick={() => setDialog('levels')} aria-label="選擇關卡">
-                    {levelIndex + 1} / {LEVELS.length}
+                  <button className="level-pill" onClick={() => openPicker(mode)} aria-label="選擇關卡">
+                    {mode === 'story' ? `${levelIndex + 1} / ${bank.length}` : levelLabel(selection)}
                     <ChevronDown size={14} />
                   </button>
                   <button
                     className="icon-btn small"
                     aria-label={canNext ? '下一關' : '下一關尚未解鎖'}
                     disabled={!canNext}
-                    onClick={() => openLevel(levelIndex + 1)}
+                    onClick={() => openLevel(nextSelection)}
                   >
                     <ChevronRight />
                   </button>
@@ -346,7 +379,12 @@ export function App() {
                   覆蓋 {suppressed} / {level.enemies.length}
                 </span>
               </div>
-              <div className="palette" role="radiogroup" aria-label="部署工具">
+              <div
+                className="palette"
+                role="radiogroup"
+                aria-label="部署工具"
+                style={{ '--tool-cols': unitChoices.length + 2 <= 4 ? 4 : Math.ceil((unitChoices.length + 2) / 2) } as CSSProperties}
+              >
                 {unitChoices.map((u) => {
                   const left = level.quotas[u] - used[u];
                   return (
@@ -421,10 +459,12 @@ export function App() {
                 className={`game-message ${solved ? 'success' : conflicts.size ? 'warning' : ''}`}
               >
                 {solved
-                  ? levelIndex === LEVELS.length - 1
-                    ? `${LEVELS.length} 場戰役全數攻克！`
+                  ? levelIndex === bank.length - 1
+                    ? mode === 'story'
+                      ? '劇情完成！六種兵種都已上陣，接著挑戰關卡模式吧。'
+                      : `${bank.length} 關全數攻克，王城已被拿下！`
                     : levelIndex === chapter.to
-                      ? `第 ${chapterIndex + 1} 章「${chapter.name}」完成！`
+                      ? `第 ${chapterNo + 1} ${CHAPTER_WORD[mode]}「${chapter.name}」完成！`
                       : '全軍就位，所有敵軍都已被覆蓋！'
                   : conflicts.size
                     ? '有單位彼此相鄰、同列／欄／陣地超過 2 個，或兵種超出數量。'
@@ -477,9 +517,17 @@ export function App() {
                   </div>
                   <button
                     className="btn primary wide"
-                    onClick={() => (canNext ? openLevel(levelIndex + 1) : setView('home'))}
+                    onClick={() =>
+                      canNext ? openLevel(nextSelection) : storyFinished ? openLevel(campaignEntry) : setView('home')
+                    }
                   >
-                    {canNext ? (levelIndex === chapter.to ? '前往下一章' : '下一關') : '返回主選單'}
+                    {canNext
+                      ? levelIndex === chapter.to
+                        ? `前往下一${CHAPTER_WORD[mode]}`
+                        : '下一關'
+                      : storyFinished
+                        ? '挑戰關卡模式'
+                        : '返回主選單'}
                     <ChevronRight />
                   </button>
                 </>
@@ -540,34 +588,52 @@ export function App() {
         </p>
       </Modal>
 
-      <Modal open={dialog === 'levels'} title="選擇關卡" onClose={() => setDialog(null)} wide>
-        {CHAPTERS.map((c, ci) => (
-          <div key={c.name} className="chapter-block">
-            <h3>
-              第 {ci + 1} 章 · {c.name}
-              <span className="chapter-units">{c.units.map((u) => UNITS[u].glyph).join(' ')}</span>
-            </h3>
-            <div className="level-grid">
-              {LEVELS.slice(c.from, c.to + 1).map((l, k) => {
-                const i = c.from + k,
-                  open = canOpen(progress, i),
-                  done = progress.completed.includes(l.id);
-                return (
-                  <button
-                    key={l.id}
-                    className={`level-tile ${done ? 'done' : ''} ${view === 'play' && i === levelIndex ? 'current' : ''}`}
-                    disabled={!open}
-                    aria-label={`第 ${i + 1} 關${done ? '，已攻克' : open ? '' : '，未解鎖'}`}
-                    onClick={() => openLevel(i)}
-                  >
-                    {i + 1}
-                    {progress.flawless.includes(l.id) ? <Star /> : done ? <Check /> : !open ? <Lock /> : null}
-                  </button>
-                );
-              })}
+      <Modal open={dialog === 'levels'} title={MODE_NAME[picker]} onClose={() => setDialog(null)} wide>
+        <p className="picker-intro">
+          {picker === 'story'
+            ? '新手教學：每章加入一種新兵種，從基本佈陣一路學到六兵種齊上陣。'
+            : `${CAMPAIGN_CHAPTERS.length} 大關、每關 10 小關，敵軍與兵種組合逐步加難。建議先完成劇情模式。`}
+        </p>
+        <button className="btn primary wide picker-continue" onClick={() => openLevel(pickerEntry)}>
+          {pickerDone === pickerBank.length ? '重玩最後一關' : pickerDone ? '繼續' : '開始'} ·{' '}
+          {levelLabel(pickerEntry)}
+          <ChevronRight />
+        </button>
+        {CHAPTERS[picker].map((c, ci) => {
+          const levels = pickerBank.slice(c.from, c.to + 1);
+          return (
+            <div key={c.name} className="chapter-block">
+              <h3>
+                <span>
+                  第 {ci + 1} {CHAPTER_WORD[picker]} · {c.name}
+                  <small>
+                    {levels.filter((l) => progress.completed.includes(l.id)).length} / {levels.length}
+                  </small>
+                </span>
+                <span className="chapter-units">{c.units.map((u) => UNITS[u].glyph).join(' ')}</span>
+              </h3>
+              <div className="level-grid">
+                {levels.map((l, k) => {
+                  const target = { mode: picker, level: c.from + k },
+                    open = canOpen(progress, target),
+                    done = progress.completed.includes(l.id);
+                  return (
+                    <button
+                      key={l.id}
+                      className={`level-tile ${done ? 'done' : ''} ${view === 'play' && mode === picker && target.level === levelIndex ? 'current' : ''}`}
+                      disabled={!open}
+                      aria-label={`${levelLabel(target)}${done ? '，已攻克' : open ? '' : '，未解鎖'}`}
+                      onClick={() => openLevel(target)}
+                    >
+                      {picker === 'story' ? target.level + 1 : k + 1}
+                      {progress.flawless.includes(l.id) ? <Star /> : done ? <Check /> : !open ? <Lock /> : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Modal>
 
       <Modal open={dialog === 'reset'} title="重新佈陣？" onClose={() => setDialog(null)}>

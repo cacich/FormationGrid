@@ -111,11 +111,16 @@ svg {
 .home-btn:disabled {
   opacity: 0.5;
 }
-.home-progress {
-  margin: 16px 0 0;
-  color: #9d968a;
-  font-size: 13px;
-  text-align: center;
+.home-btn-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.25;
+}
+.home-btn-text small {
+  color: #b9b1a0;
+  font-size: 12px;
+  font-weight: 500;
 }
 
 /* Play */
@@ -235,7 +240,7 @@ h1 {
 /* Palette */
 .palette {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(var(--tool-cols, 4), 1fr);
   gap: 6px;
 }
 .tool {
@@ -783,6 +788,21 @@ footer {
   justify-content: space-between;
   margin: 0 0 8px;
   font-size: 14px;
+}
+.chapter-block h3 small {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.picker-intro {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.btn.wide.picker-continue {
+  margin: 12px 0 16px;
 }
 .chapter-units {
   color: var(--muted);

@@ -1,16 +1,22 @@
 import { LEVELS } from './level-data.ts';
+import { CAMPAIGN_LEVELS } from './campaign-data.ts';
 import { decodePiece } from './units.ts';
+import type { Level } from './game.ts';
 
+export type Mode = 'story' | 'campaign';
+export type Selection = { mode: Mode; level: number };
 export type Session = { board: string[]; elapsed: number; hints: number };
 export type Progress = {
   version: 1;
   records: Record<string, Session>;
   completed: string[];
   flawless: string[];
-  last: number | null;
+  last: Selection | null;
 };
 export const SAVE_KEY = 'zhen-grid-progress-v1';
 export const PREFS_KEY = 'zhen-grid-prefs-v1';
+export const BANKS: Record<Mode, Level[]> = { story: LEVELS, campaign: CAMPAIGN_LEVELS };
+const ALL_LEVELS = [...LEVELS, ...CAMPAIGN_LEVELS];
 
 export const emptyProgress = (): Progress => ({
   version: 1,
@@ -25,25 +31,27 @@ export const emptySession = (size: number): Session => ({
   hints: 0,
 });
 
-export function unlockedLevel(progress: Progress) {
+export function unlockedLevel(progress: Progress, mode: Mode = 'story') {
+  const bank = BANKS[mode];
   let next = 0;
-  while (next < LEVELS.length && progress.completed.includes(LEVELS[next].id))
-    next++;
-  return Math.min(next, LEVELS.length - 1);
+  while (next < bank.length && progress.completed.includes(bank[next].id)) next++;
+  return Math.min(next, bank.length - 1);
 }
-export const canOpen = (progress: Progress, level: number) =>
+export const completedIn = (progress: Progress, mode: Mode) =>
+  BANKS[mode].filter((l) => progress.completed.includes(l.id)).length;
+export const canOpen = (progress: Progress, { mode, level }: Selection) =>
+  (mode === 'story' || mode === 'campaign') &&
   Number.isInteger(level) &&
   level >= 0 &&
-  level < LEVELS.length &&
-  level <= unlockedLevel(progress);
+  level < BANKS[mode].length &&
+  level <= unlockedLevel(progress, mode);
 
 export function recordSession(
   progress: Progress,
-  level: number,
+  id: string,
   session: Session,
   solved: boolean,
 ): Progress {
-  const id = LEVELS[level].id;
   return {
     ...progress,
     records: { ...progress.records, [id]: session },
@@ -66,12 +74,12 @@ const validCell = (v: unknown) =>
 export function parseProgress(raw: unknown): Progress {
   if (!raw || typeof raw !== 'object' || (raw as Progress).version !== 1)
     throw new Error('不支援這個存檔格式');
-  const source = raw as Partial<Progress>,
+  const source = raw as Partial<Omit<Progress, 'last'>> & { last?: unknown },
     result = emptyProgress(),
-    ids = new Set(LEVELS.map((l) => l.id));
+    ids = new Set(ALL_LEVELS.map((l) => l.id));
   if (source.records && typeof source.records === 'object')
     for (const [id, value] of Object.entries(source.records)) {
-      const level = LEVELS.find((l) => l.id === id);
+      const level = ALL_LEVELS.find((l) => l.id === id);
       if (
         level &&
         value &&
@@ -91,7 +99,12 @@ export function parseProgress(raw: unknown): Progress {
   result.flawless = Array.isArray(source.flawless)
     ? [...new Set(source.flawless.filter((id) => result.completed.includes(id)))]
     : [];
-  if (typeof source.last === 'number' && canOpen(result, source.last))
-    result.last = source.last;
+  // Saves from before the campaign stored the last story level as a bare number.
+  const last =
+    typeof source.last === 'number'
+      ? { mode: 'story' as const, level: source.last }
+      : (source.last as Selection | null | undefined);
+  if (last && typeof last === 'object' && canOpen(result, last))
+    result.last = { mode: last.mode, level: last.level };
   return result;
 }
