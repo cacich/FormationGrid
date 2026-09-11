@@ -474,6 +474,32 @@ h1 {
   border-left: 6px solid transparent;
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45));
 }
+.mark-token {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 70%;
+  aspect-ratio: 1;
+  border: 2px dashed var(--navy);
+  border-radius: 50%;
+  background: rgba(38, 65, 106, 0.12);
+  color: var(--navy);
+  font-size: clamp(10px, 3vw, 15px);
+  font-weight: 900;
+  line-height: 1;
+  animation: pop 0.15s ease-out;
+}
+.mark-token.conflict {
+  border-color: var(--crimson);
+  background: rgba(179, 55, 46, 0.15);
+  color: var(--crimson);
+}
+.mark-count {
+  margin-left: 6px;
+  color: var(--navy);
+  font-size: 12px;
+}
 .piece.ghost {
   opacity: 0.6;
   animation: none;

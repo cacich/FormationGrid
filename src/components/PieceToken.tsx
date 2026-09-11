@@ -47,6 +47,14 @@ export function RangeDiagram({ unit }: { unit: UnitId }) {
   );
 }
 
+export function MarkToken({ conflict }: { conflict?: boolean }) {
+  return (
+    <span className={`mark-token ${conflict ? 'conflict' : ''}`} aria-hidden="true">
+      ?
+    </span>
+  );
+}
+
 export function EnemyToken({ suppressed }: { suppressed: boolean }) {
   return (
     <span className={`enemy ${suppressed ? 'suppressed' : ''}`} aria-hidden="true">

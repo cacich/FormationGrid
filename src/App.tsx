@@ -5,9 +5,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleDashed,
   CircleHelp,
   Clock3,
-  Eraser,
   Home as HomeIcon,
   Lightbulb,
   Lock,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { CAMPAIGN_CHAPTERS, STORY_CHAPTERS, chapterIndex, type Chapter } from './lib/chapters.ts';
 import {
+  MARK,
   NOTE,
   automaticExclusions,
   conflictsFor,
@@ -108,6 +109,7 @@ export function App() {
   const solved = useMemo(() => isSolved(level, board), [level, board]);
   const suppressed = level.enemies.filter((e) => covered.has(e)).length,
     placed = used.reduce((a, b) => a + b, 0),
+    marks = board.filter((code) => code === MARK).length,
     total = n * UNITS_PER_LINE,
     chapters = CHAPTERS[mode],
     chapterNo = chapterIndex(chapters, levelIndex),
@@ -216,12 +218,14 @@ export function App() {
       return;
     }
     const current = decodePiece(board[i]);
-    if (tool === 'erase') {
-      if (board[i]) commit(withCell(i, ''));
+    if (tool === 'mark') {
+      if (board[i] === MARK) commit(withCell(i, ''), '已清除佔位標記。');
+      else if (!board[i] && auto.has(i)) setMessage('這格已自動排除：會碰到其他單位，或所在列、欄、陣地已滿。');
+      else commit(withCell(i, MARK), current ? `已把${UNITS[current.unit].name}改回佔位標記。` : undefined);
       return;
     }
     if (tool === 'note') {
-      if (current) setMessage('這格有單位；先用「撤下」清除。');
+      if (current || board[i] === MARK) setMessage('這格已有單位或佔位標記；用同一個工具再點一次即可清除。');
       else if (!board[i] && auto.has(i)) setMessage('這格已自動排除。');
       else commit(withCell(i, board[i] === NOTE ? '' : NOTE));
       return;
@@ -373,6 +377,7 @@ export function App() {
               <div className="stats">
                 <span className={placed === total ? 'done' : ''}>
                   部署 {placed} / {total}
+                  {marks > 0 && <small className="mark-count">佔位 {marks}</small>}
                 </span>
                 <span className={suppressed === level.enemies.length ? 'done' : ''}>
                   <EnemyToken suppressed={false} />
@@ -406,21 +411,21 @@ export function App() {
                 })}
                 <button
                   role="radio"
+                  aria-checked={tool === 'mark'}
+                  className={`tool tool-text ${tool === 'mark' ? 'active' : ''}`}
+                  onClick={() => setTool('mark')}
+                >
+                  <CircleDashed />
+                  佔位
+                </button>
+                <button
+                  role="radio"
                   aria-checked={tool === 'note'}
                   className={`tool tool-text ${tool === 'note' ? 'active' : ''}`}
                   onClick={() => setTool('note')}
                 >
                   <X />
                   排除
-                </button>
-                <button
-                  role="radio"
-                  aria-checked={tool === 'erase'}
-                  className={`tool tool-text ${tool === 'erase' ? 'active' : ''}`}
-                  onClick={() => setTool('erase')}
-                >
-                  <Eraser />
-                  撤下
                 </button>
               </div>
               <p className="tool-detail">
@@ -434,7 +439,7 @@ export function App() {
                 ) : tool === 'note' ? (
                   '點格子標記「這裡不會有單位」，再點一次清除'
                 ) : (
-                  '點格子撤下單位或清除記號'
+                  '確定有單位、未定兵種時佔位；會自動排除周圍與已滿的列欄，但不算兵力'
                 )}
               </p>
               <div className="toggles">
@@ -535,7 +540,7 @@ export function App() {
               <p className="tap-help">
                 點一下格子：部署單位（預設朝上）· 按住往任一方向滑：決定朝向
                 <br />
-                對已部署的單位滑動可轉向 · 同兵種再點一次即撤下
+                對已部署的單位滑動可轉向 · 同一工具再點一次即清除
               </p>
             </section>
           </>
@@ -584,7 +589,7 @@ export function App() {
           ))}
         </div>
         <p className="rule-note">
-          點一下格子部署目前選擇的兵種，預設朝上；按住格子往上下左右滑動，放開時就朝那個方向。對已部署的單位滑動可以改變朝向。鍵盤可用方向鍵部署或轉向。提示會先說明理由，使用提示仍可解鎖下一關。
+          點一下格子部署目前選擇的兵種，預設朝上；按住格子往上下左右滑動，放開時就朝那個方向。對已部署的單位滑動可以改變朝向；同一工具再點一次即清除。確定有單位但還沒決定兵種時，可先放「佔位」：它和單位一樣會自動排除周圍與已滿的列、欄、陣地，但不算兵力、不覆蓋敵軍，之後選兵種點它即可替換。鍵盤可用方向鍵部署或轉向。提示會先說明理由，使用提示仍可解鎖下一關。
         </p>
       </Modal>
 

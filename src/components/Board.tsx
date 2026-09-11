@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { NOTE, type Board as BoardState, type Level } from '../lib/game.ts';
+import { MARK, NOTE, type Board as BoardState, type Level } from '../lib/game.ts';
 import type { Hint } from '../lib/hints.ts';
 import { DIR_NAMES, UNITS, coverage, decodePiece, type Dir, type Piece, type UnitId } from '../lib/units.ts';
-import { EnemyToken, PieceToken } from './PieceToken.tsx';
+import { EnemyToken, MarkToken, PieceToken } from './PieceToken.tsx';
 
-export type Tool = UnitId | 'note' | 'erase';
+export type Tool = UnitId | 'note' | 'mark';
 type Drag = { index: number; x: number; y: number; id: number; dir: Dir | null };
 
 const KEY_DIRS: Record<string, Dir> = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3 };
@@ -150,7 +150,9 @@ export function Board({
                   : '敵軍，尚未覆蓋'
                 : piece
                   ? `${UNITS[piece.unit].name}朝${DIR_NAMES[piece.dir]}`
-                  : code === NOTE
+                  : code === MARK
+                    ? '佔位標記'
+                    : code === NOTE
                     ? '已排除'
                     : isAuto
                       ? '自動排除'
@@ -172,6 +174,7 @@ export function Board({
             {!isEnemy && (code === NOTE || isAuto) && !shown && (
               <span className={`note-dot ${isAuto ? 'auto-note' : ''}`} />
             )}
+            {code === MARK && !shown && <MarkToken conflict={conflicts.has(index)} />}
             {shown && (
               <PieceToken
                 piece={shown}

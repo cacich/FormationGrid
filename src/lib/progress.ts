@@ -1,7 +1,7 @@
 import { LEVELS } from './level-data.ts';
 import { CAMPAIGN_LEVELS } from './campaign-data.ts';
 import { decodePiece } from './units.ts';
-import type { Level } from './game.ts';
+import { MARK, NOTE, type Level } from './game.ts';
 
 export type Mode = 'story' | 'campaign';
 export type Selection = { mode: Mode; level: number };
@@ -69,7 +69,7 @@ export function recordSession(
 const count = (x: unknown) =>
   Number.isSafeInteger(x) && Number(x) >= 0 ? Number(x) : 0;
 const validCell = (v: unknown) =>
-  v === '' || v === 'x' || (typeof v === 'string' && decodePiece(v) !== null);
+  v === '' || v === NOTE || v === MARK || (typeof v === 'string' && decodePiece(v) !== null);
 
 export function parseProgress(raw: unknown): Progress {
   if (!raw || typeof raw !== 'object' || (raw as Progress).version !== 1)

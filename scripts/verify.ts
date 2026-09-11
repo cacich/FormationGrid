@@ -4,11 +4,12 @@ import { LEVELS } from '../src/lib/level-data.ts';
 import { CAMPAIGN_LEVELS } from '../src/lib/campaign-data.ts';
 import { HARD } from '../src/lib/source/hard-data.ts';
 import { GRIDS } from '../src/lib/source/grid-data.ts';
-import { doubleSolutions } from '../src/lib/double-logic.ts';
+import { doubleSolutions, touching } from '../src/lib/double-logic.ts';
 import { solutionCells, solveAssignment } from '../src/lib/assign.ts';
 import { gridFingerprint, logicalDoubleSolve } from '../src/lib/proof.ts';
 import { CAMPAIGN_CHAPTERS, STORY_CHAPTERS } from '../src/lib/chapters.ts';
 import {
+  MARK,
   answerBoard,
   automaticExclusions,
   conflictsFor,
@@ -84,6 +85,29 @@ function verifyLevel(level: Level, source: { regions: number[][]; solution: numb
   messy[cells[0]] = 'x';
   messy[[...Array(n * n).keys()].find((i) => !cells.includes(i) && !level.enemies.includes(i))!] = 'S0';
   assert.ok(isSolved(level, playWithHints(level, messy)), `${level.id}: hint cleanup`);
+  // Placeholders on every position (plus one stray) are converted into real units.
+  const marked = emptyBoard(n);
+  for (const cell of cells) marked[cell] = MARK;
+  assert.ok(!isSolved(level, marked), `${level.id}: placeholders are not troops`);
+  marked[[...Array(n * n).keys()].find((i) => !cells.includes(i) && !level.enemies.includes(i))!] = MARK;
+  assert.ok(isSolved(level, playWithHints(level, marked)), `${level.id}: hint from placeholders`);
+}
+
+// Placeholders exclude neighbors and count toward line limits like units.
+{
+  const level = LEVELS[0],
+    n = level.regions.length,
+    cell = solutionCells(level)[0],
+    board = emptyBoard(n);
+  board[cell] = MARK;
+  const neighbor = [...Array(n * n).keys()].find(
+    (i) => touching(i, cell, n) && !level.enemies.includes(i),
+  )!;
+  assert.ok(automaticExclusions(level, board).has(neighbor), 'placeholder auto-excludes neighbors');
+  board[neighbor] = MARK;
+  assert.ok(conflictsFor(level, board).has(cell) && conflictsFor(level, board).has(neighbor));
+  assert.equal(usedCounts(board).reduce((a, b) => a + b, 0), 0, 'placeholders use no quota');
+  assert.equal(coveredCells(level, board).size, 0, 'placeholders cover nothing');
 }
 
 // Story: 40 tutorial levels over the Bullpen bank; chapters cover them contiguously.
@@ -140,6 +164,13 @@ const advanced = recordSession(progress, CAMPAIGN_LEVELS[0].id, { board: answerB
 assert.equal(unlockedLevel(advanced, 'campaign'), 1);
 assert.ok(advanced.flawless.includes(CAMPAIGN_LEVELS[0].id));
 assert.deepEqual(parseProgress({ ...advanced, last: { mode: 'campaign', level: 1 } }).last, { mode: 'campaign', level: 1 });
+const withMark = emptyBoard(10);
+withMark[0] = MARK;
+assert.deepEqual(
+  parseProgress({ ...advanced, records: { [LEVELS[0].id]: { board: withMark, elapsed: 1, hints: 0 } } }).records[LEVELS[0].id].board,
+  withMark,
+  'placeholders survive saves',
+);
 assert.equal(parseProgress({ ...advanced, last: { mode: 'campaign', level: 5 } }).last, null, 'locked last dropped');
 assert.equal(unlockedLevel(emptyProgress()), 0);
 assert.throws(() => parseProgress({ version: 99 }));

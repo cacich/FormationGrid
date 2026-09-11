@@ -15,9 +15,14 @@ export type Level = {
   answer: string[];
 };
 
-// Board cells: '' empty, 'x' player exclusion note, otherwise a piece code like 'A2'.
+// Board cells: '' empty, 'x' exclusion note, 'o' placeholder (a unit of undecided
+// type), otherwise a piece code like 'A2'.
 export type Board = string[];
 export const NOTE = 'x';
+export const MARK = 'o';
+// Placeholders count as units for positions, but not for quotas or coverage.
+export const occupies = (code: string) => code === MARK || decodePiece(code) !== null;
+const occupiedCells = (board: Board) => board.flatMap((code, i) => (occupies(code) ? [i] : []));
 export const emptyBoard = (size: number): Board => Array(size * size).fill('');
 
 export const puzzleOf = (level: Level) => ({
@@ -51,22 +56,22 @@ export function coveredCells(level: Level, board: Board) {
 
 export function conflictsFor(level: Level, board: Board) {
   const n = level.regions.length,
-    pieces = piecesOf(board),
+    occupied = occupiedCells(board),
     bad = new Set<number>(),
     enemies = new Set(level.enemies);
-  for (const [i] of pieces) if (enemies.has(i)) bad.add(i);
-  for (let a = 0; a < pieces.length; a++)
-    for (let b = a + 1; b < pieces.length; b++)
-      if (touching(pieces[a][0], pieces[b][0], n)) {
-        bad.add(pieces[a][0]);
-        bad.add(pieces[b][0]);
+  for (const i of occupied) if (enemies.has(i)) bad.add(i);
+  for (let a = 0; a < occupied.length; a++)
+    for (let b = a + 1; b < occupied.length; b++)
+      if (touching(occupied[a], occupied[b], n)) {
+        bad.add(occupied[a]);
+        bad.add(occupied[b]);
       }
   for (const unit of unitsFor(level)) {
-    const placed = unit.filter((i) => decodePiece(board[i]));
+    const placed = unit.filter((i) => occupies(board[i]));
     if (placed.length > 2) placed.forEach((i) => bad.add(i));
   }
   const counts = usedCounts(board);
-  for (const [i, piece] of pieces)
+  for (const [i, piece] of piecesOf(board))
     if (counts[piece.unit] > level.quotas[piece.unit]) bad.add(i);
   return bad;
 }
@@ -86,7 +91,7 @@ export function positionBoard(level: Level, board: Board, auto?: Set<number>) {
   const enemies = new Set(level.enemies);
   return board.map(
     (code, i): CellState =>
-      decodePiece(code)
+      occupies(code)
         ? 2
         : enemies.has(i) || code === NOTE || auto?.has(i)
           ? 1
@@ -100,12 +105,12 @@ export function automaticExclusions(level: Level, board: Board, enabled = true) 
   if (!enabled) return excluded;
   const n = level.regions.length,
     enemies = new Set(level.enemies),
-    units = piecesOf(board).map(([i]) => i),
+    units = occupiedCells(board),
     free = (i: number) => board[i] === '' && !enemies.has(i);
   for (let i = 0; i < board.length; i++)
     if (free(i) && units.some((u) => touching(u, i, n))) excluded.add(i);
   for (const unit of unitsFor(level))
-    if (unit.filter((i) => decodePiece(board[i])).length >= 2)
+    if (unit.filter((i) => occupies(board[i])).length >= 2)
       unit.forEach((i) => free(i) && excluded.add(i));
   return excluded;
 }

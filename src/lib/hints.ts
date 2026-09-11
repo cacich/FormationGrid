@@ -1,7 +1,7 @@
 import { nextDoubleDeduction } from './double-logic.ts';
 import { solveAssignment, solutionCells, type Constraint } from './assign.ts';
-import { NOTE, piecesOf, positionBoard, type Board, type Level } from './game.ts';
-import { DIR_NAMES, UNITS, encodePiece, type Piece } from './units.ts';
+import { MARK, NOTE, occupies, piecesOf, positionBoard, type Board, type Level } from './game.ts';
+import { DIR_NAMES, UNITS, decodePiece, encodePiece, type Piece } from './units.ts';
 
 export type Hint = {
   cells: number[];
@@ -24,13 +24,16 @@ export function nextHint(
 ): Hint | null {
   const solution = new Set(solutionCells(level)),
     pieces = piecesOf(board);
-  const misplaced = pieces.find(([i]) => !solution.has(i));
-  if (misplaced)
+  const misplaced = board.findIndex((code, i) => occupies(code) && !solution.has(i));
+  if (misplaced >= 0)
     return {
-      cells: [misplaced[0]],
+      cells: [misplaced],
       focus: [],
-      reason: '亮起的單位不在唯一的佈陣位置上。先把它撤下，再繼續推理。',
-      apply: [{ cell: misplaced[0], value: '' }],
+      reason:
+        board[misplaced] === MARK
+          ? '亮起的佔位標記不在唯一的佈陣位置上。先清除它，再繼續推理。'
+          : '亮起的單位不在唯一的佈陣位置上。先把它撤下，再繼續推理。',
+      apply: [{ cell: misplaced, value: '' }],
     };
   const wrongNote = board.findIndex((v, i) => v === NOTE && solution.has(i));
   if (wrongNote >= 0)
@@ -84,13 +87,18 @@ export function nextHint(
         value: step.value === 2 ? encodePiece(completion!.get(cell)!) : NOTE,
       })),
     };
-  const open = [...solution].find((i) => !board[i]);
+  // Every position is known: turn a placeholder (or an empty cell) into a real unit.
+  const open = [...solution].find((i) => !decodePiece(board[i]));
   if (open === undefined) return null;
+  const fill = completion.get(open)!;
   return {
     cells: [open],
     focus: [],
-    reason: '這是答案提示：亮起的格子需要部署單位。',
-    apply: [{ cell: open, value: encodePiece(completion.get(open)!) }],
+    reason:
+      board[open] === MARK
+        ? `這個佔位標記的位置正確。照目前的配置，這裡可以部署朝${DIR_NAMES[fill.dir]}的${UNITS[fill.unit].name}。`
+        : '這是答案提示：亮起的格子需要部署單位。',
+    apply: [{ cell: open, value: encodePiece(fill) }],
   };
 }
 
