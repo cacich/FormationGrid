@@ -67,6 +67,12 @@ npm run build
 
 `npm test` 會驗證每關唯一解、答案合法，並用提示系統從空盤、轉錯方向、放錯位置等狀態自動解完。已發布的關卡 ID 不可重新生成覆蓋；改題請升級 ID（例如 `zhen-v2-*`）。
 
+## 安裝到主畫面（PWA）
+
+- `public/manifest.webmanifest` 與 `public/icons/` 讓 Android Chrome 可「安裝應用程式」；iPhone 請用 Safari「分享 → 加入主畫面」。
+- 圖示由 `python scripts/make-icons.py` 依 `public/icon.svg` 的設計繪製（需要 Pillow 與 Windows 的 Noto Serif TC 字型）；換正式美術時直接覆蓋同名 PNG 即可。
+- `public/sw.js` 只在正式建置啟用：頁面走網路優先（上線新版後下次開啟即更新），建置資產走快取，可離線遊玩。Google Fonts 離線時改用系統字型。
+
 ## 部署
 
 `.github/workflows/deploy-pages.yml` 會在推送到 `main` 時測試、建置並發布到 GitHub Pages（Settings → Pages → Source 選 **GitHub Actions**）。Vite 使用相對路徑，不需依 repo 名稱調整。

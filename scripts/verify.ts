@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { LEVELS } from '../src/lib/level-data.ts';
 import { CAMPAIGN_LEVELS } from '../src/lib/campaign-data.ts';
 import { HARD } from '../src/lib/source/hard-data.ts';
@@ -143,4 +144,22 @@ assert.equal(parseProgress({ ...advanced, last: { mode: 'campaign', level: 5 } }
 assert.equal(unlockedLevel(emptyProgress()), 0);
 assert.throws(() => parseProgress({ version: 99 }));
 
-console.log(`verified ${LEVELS.length} story + ${CAMPAIGN_LEVELS.length} campaign levels`);
+// Installability: manifest icons exist as PNGs of the declared size.
+const publicFile = (path: string) => new URL(`../public/${path}`, import.meta.url);
+const pngSize = (path: string) => {
+  const bytes = readFileSync(publicFile(path));
+  assert.equal(bytes.toString('latin1', 1, 4), 'PNG', `${path}: PNG`);
+  return `${bytes.readUInt32BE(16)}x${bytes.readUInt32BE(20)}`;
+};
+const manifest = JSON.parse(readFileSync(publicFile('manifest.webmanifest'), 'utf8'));
+assert.equal(manifest.display, 'standalone');
+assert.ok(manifest.start_url && manifest.short_name);
+for (const size of ['192x192', '512x512'])
+  assert.ok(manifest.icons.some((i: { sizes: string; purpose: string }) => i.sizes === size && i.purpose === 'any'));
+for (const icon of manifest.icons) assert.equal(pngSize(icon.src), icon.sizes, icon.src);
+assert.equal(pngSize('icons/apple-touch-icon.png'), '180x180');
+const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+assert.ok(html.includes('rel="manifest"') && html.includes('rel="apple-touch-icon"'));
+assert.ok(readFileSync(publicFile('sw.js'), 'utf8').includes("addEventListener('fetch'"));
+
+console.log(`verified ${LEVELS.length} story + ${CAMPAIGN_LEVELS.length} campaign levels, manifest and icons`);
