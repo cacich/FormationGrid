@@ -8,6 +8,7 @@ import {
   CircleDashed,
   CircleHelp,
   Clock3,
+  Flag,
   Home as HomeIcon,
   Lightbulb,
   Lock,
@@ -18,8 +19,15 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import { CAMPAIGN_CHAPTERS, STORY_CHAPTERS, chapterIndex, type Chapter } from './lib/chapters.ts';
 import {
+  CAMPAIGN_CHAPTERS,
+  FORMATION_CHAPTERS,
+  STORY_CHAPTERS,
+  chapterIndex,
+  type Chapter,
+} from './lib/chapters.ts';
+import {
+  FLAG,
   MARK,
   NOTE,
   automaticExclusions,
@@ -53,20 +61,27 @@ import { PieceToken, RangeDiagram, EnemyToken } from './components/PieceToken.ts
 export const GAME_NAME = '陣格';
 const UNITS_PER_LINE = 2;
 const BASE_MESSAGE = '每列、每欄、每個陣地各部署 2 個單位，並覆蓋所有敵軍';
-const CHAPTERS: Record<Mode, Chapter[]> = { story: STORY_CHAPTERS, campaign: CAMPAIGN_CHAPTERS };
-const MODE_NAME: Record<Mode, string> = { story: '劇情模式', campaign: '關卡模式' };
-const CHAPTER_WORD: Record<Mode, string> = { story: '章', campaign: '大關' };
+const FORMATION_MESSAGE = '每列、每欄、每個陣地各部署 2 個單位，單位之間不能相鄰';
+const baseMessage = (mode: Mode) => (mode === 'formation' ? FORMATION_MESSAGE : BASE_MESSAGE);
+const CHAPTERS: Record<Mode, Chapter[]> = {
+  story: STORY_CHAPTERS,
+  campaign: CAMPAIGN_CHAPTERS,
+  formation: FORMATION_CHAPTERS,
+};
+const MODE_NAME: Record<Mode, string> = { story: '劇情模式', campaign: '關卡模式', formation: '佈陣模式' };
+const MODE_SHORT: Record<Mode, string> = { story: '劇情', campaign: '關卡', formation: '佈陣' };
+const CHAPTER_WORD: Record<Mode, string> = { story: '章', campaign: '大關', formation: '大關' };
 const formatTime = (s: number) =>
   `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 const levelLabel = ({ mode, level }: Selection) => {
   if (mode === 'story') return `第 ${level + 1} 關`;
-  const chapter = CAMPAIGN_CHAPTERS[chapterIndex(CAMPAIGN_CHAPTERS, level)];
-  return `${chapterIndex(CAMPAIGN_CHAPTERS, level) + 1}－${String(level - chapter.from + 1).padStart(2, '0')}`;
+  const c = chapterIndex(CHAPTERS[mode], level);
+  return `${c + 1}－${String(level - CHAPTERS[mode][c].from + 1).padStart(2, '0')}`;
 };
 const openingMessage = ({ mode, level }: Selection) => {
   const c = chapterIndex(CHAPTERS[mode], level),
     chapter = CHAPTERS[mode][c];
-  if (level !== chapter.from) return BASE_MESSAGE;
+  if (level !== chapter.from) return baseMessage(mode);
   return mode === 'story' ? chapter.intro : `第 ${c + 1} 大關「${chapter.name}」：${chapter.intro}`;
 };
 
@@ -108,13 +123,15 @@ export function App() {
   const used = useMemo(() => usedCounts(board), [board]);
   const solved = useMemo(() => isSolved(level, board), [level, board]);
   const suppressed = level.enemies.filter((e) => covered.has(e)).length,
-    placed = used.reduce((a, b) => a + b, 0),
+    placed = board.filter((code) => code === FLAG).length + used.reduce((a, b) => a + b, 0),
     marks = board.filter((code) => code === MARK).length,
     total = n * UNITS_PER_LINE,
     chapters = CHAPTERS[mode],
     chapterNo = chapterIndex(chapters, levelIndex),
     chapter = chapters[chapterNo],
     unitChoices = UNIT_IDS.filter((u) => level.quotas[u] > 0),
+    formation = level.kind === 'formation',
+    toolCount = formation ? 2 : unitChoices.length + 2,
     nextSelection = { mode, level: levelIndex + 1 },
     canNext = canOpen(progress, nextSelection);
 
@@ -173,7 +190,13 @@ export function App() {
       setHistory([]);
       setHint(null);
       setMessage(openingMessage(target));
-      setTool((t) => (typeof t === 'number' && next.quotas[t] > 0 ? t : (next.quotas.findIndex((q) => q > 0) as UnitId)));
+      setTool((t) =>
+        next.kind === 'formation'
+          ? 'flag'
+          : typeof t === 'number' && next.quotas[t] > 0
+            ? t
+            : (next.quotas.findIndex((q) => q > 0) as UnitId),
+      );
       setDialog(Object.keys(progress.records).length === 0 ? 'rules' : null);
       setView('play');
     },
@@ -192,7 +215,7 @@ export function App() {
     );
     setHint(null);
     if (nextSolved) navigator.vibrate?.([40, 30, 70]);
-    setMessage(feedback ?? BASE_MESSAGE);
+    setMessage(feedback ?? baseMessage(mode));
   };
   const withCell = (i: number, value: string) => {
     const next = [...board];
@@ -218,6 +241,12 @@ export function App() {
       return;
     }
     const current = decodePiece(board[i]);
+    if (tool === 'flag') {
+      if (board[i] === FLAG) commit(withCell(i, ''), '已撤下單位。');
+      else if (!board[i] && auto.has(i)) setMessage('這格已自動排除：會碰到其他單位，或所在列、欄、陣地已滿。');
+      else commit(withCell(i, FLAG));
+      return;
+    }
     if (tool === 'mark') {
       if (board[i] === MARK) commit(withCell(i, ''), '已清除佔位標記。');
       else if (!board[i] && auto.has(i)) setMessage('這格已自動排除：會碰到其他單位，或所在列、欄、陣地已滿。');
@@ -225,7 +254,7 @@ export function App() {
       return;
     }
     if (tool === 'note') {
-      if (current || board[i] === MARK) setMessage('這格已有單位或佔位標記；用同一個工具再點一次即可清除。');
+      if (current || board[i] === MARK || board[i] === FLAG) setMessage('這格已有單位或佔位標記；用同一個工具再點一次即可清除。');
       else if (!board[i] && auto.has(i)) setMessage('這格已自動排除。');
       else commit(withCell(i, board[i] === NOTE ? '' : NOTE));
       return;
@@ -322,6 +351,15 @@ export function App() {
                 </small>
               </span>
             </button>
+            <button className="home-btn" disabled={!hydrated} onClick={() => openPicker('formation')}>
+              <Flag />
+              <span className="home-btn-text">
+                <span>佈陣模式</span>
+                <small>
+                  無敵軍 · {completedIn(progress, 'formation')} / {BANKS.formation.length}
+                </small>
+              </span>
+            </button>
             <button className="home-btn" onClick={() => setDialog('rules')}>
               <CircleHelp />
               規則與兵種
@@ -332,7 +370,7 @@ export function App() {
             <header className="topbar">
               <div>
                 <p className="eyebrow">
-                  {mode === 'story' ? '劇情' : '關卡'} · 第 {chapterNo + 1} {CHAPTER_WORD[mode]} · {chapter.name}
+                  {MODE_SHORT[mode]} · 第 {chapterNo + 1} {CHAPTER_WORD[mode]} · {chapter.name}
                 </p>
                 <h1>{mode === 'story' ? levelLabel(selection) : `第 ${levelLabel(selection)} 關`}</h1>
               </div>
@@ -379,16 +417,18 @@ export function App() {
                   部署 {placed} / {total}
                   {marks > 0 && <small className="mark-count">佔位 {marks}</small>}
                 </span>
-                <span className={suppressed === level.enemies.length ? 'done' : ''}>
-                  <EnemyToken suppressed={false} />
-                  覆蓋 {suppressed} / {level.enemies.length}
-                </span>
+                {!formation && (
+                  <span className={suppressed === level.enemies.length ? 'done' : ''}>
+                    <EnemyToken suppressed={false} />
+                    覆蓋 {suppressed} / {level.enemies.length}
+                  </span>
+                )}
               </div>
               <div
                 className="palette"
                 role="radiogroup"
                 aria-label="部署工具"
-                style={{ '--tool-cols': unitChoices.length + 2 <= 4 ? 4 : Math.ceil((unitChoices.length + 2) / 2) } as CSSProperties}
+                style={{ '--tool-cols': toolCount <= 4 ? toolCount : Math.ceil(toolCount / 2) } as CSSProperties}
               >
                 {unitChoices.map((u) => {
                   const left = level.quotas[u] - used[u];
@@ -409,15 +449,27 @@ export function App() {
                     </button>
                   );
                 })}
-                <button
-                  role="radio"
-                  aria-checked={tool === 'mark'}
-                  className={`tool tool-text ${tool === 'mark' ? 'active' : ''}`}
-                  onClick={() => setTool('mark')}
-                >
-                  <CircleDashed />
-                  佔位
-                </button>
+                {formation ? (
+                  <button
+                    role="radio"
+                    aria-checked={tool === 'flag'}
+                    className={`tool tool-text ${tool === 'flag' ? 'active' : ''}`}
+                    onClick={() => setTool('flag')}
+                  >
+                    <Flag />
+                    佈陣
+                  </button>
+                ) : (
+                  <button
+                    role="radio"
+                    aria-checked={tool === 'mark'}
+                    className={`tool tool-text ${tool === 'mark' ? 'active' : ''}`}
+                    onClick={() => setTool('mark')}
+                  >
+                    <CircleDashed />
+                    佔位
+                  </button>
+                )}
                 <button
                   role="radio"
                   aria-checked={tool === 'note'}
@@ -438,12 +490,16 @@ export function App() {
                   </>
                 ) : tool === 'note' ? (
                   '點格子標記「這裡不會有單位」，再點一次清除'
+                ) : tool === 'flag' ? (
+                  '點格子部署單位，再點一次撤下；不分兵種與朝向'
                 ) : (
                   '確定有單位、未定兵種時佔位；會自動排除周圍與已滿的列欄，但不算兵力'
                 )}
               </p>
               <div className="toggles">
-                <Toggle label="顯示射程" checked={prefs.ranges} onChange={(v) => setPrefs((p) => ({ ...p, ranges: v }))} />
+                {!formation && (
+                  <Toggle label="顯示射程" checked={prefs.ranges} onChange={(v) => setPrefs((p) => ({ ...p, ranges: v }))} />
+                )}
                 <Toggle label="自動排除" checked={prefs.auto} onChange={(v) => setPrefs((p) => ({ ...p, auto: v }))} />
               </div>
               <Board
@@ -467,10 +523,14 @@ export function App() {
                   ? levelIndex === bank.length - 1
                     ? mode === 'story'
                       ? '劇情完成！六種兵種都已上陣，接著挑戰關卡模式吧。'
-                      : `${bank.length} 關全數攻克，王城已被拿下！`
+                      : mode === 'campaign'
+                        ? `${bank.length} 關全數攻克，王城已被拿下！`
+                        : `${bank.length} 陣全數完成，佈陣大師！`
                     : levelIndex === chapter.to
                       ? `第 ${chapterNo + 1} ${CHAPTER_WORD[mode]}「${chapter.name}」完成！`
-                      : '全軍就位，所有敵軍都已被覆蓋！'
+                      : formation
+                        ? '佈陣完成，全軍各就各位！'
+                        : '全軍就位，所有敵軍都已被覆蓋！'
                   : conflicts.size
                     ? '有單位彼此相鄰、同列／欄／陣地超過 2 個，或兵種超出數量。'
                     : message}
@@ -537,11 +597,15 @@ export function App() {
                   </button>
                 </>
               )}
-              <p className="tap-help">
-                點一下格子：部署單位（預設朝上）· 按住往任一方向滑：決定朝向
-                <br />
-                對已部署的單位滑動可轉向 · 同一工具再點一次即清除
-              </p>
+              {formation ? (
+                <p className="tap-help">點一下格子部署單位 · 同一工具再點一次即清除</p>
+              ) : (
+                <p className="tap-help">
+                  點一下格子：部署單位（預設朝上）· 按住往任一方向滑：決定朝向
+                  <br />
+                  對已部署的單位滑動可轉向 · 同一工具再點一次即清除
+                </p>
+              )}
             </section>
           </>
         )}
@@ -591,13 +655,16 @@ export function App() {
         <p className="rule-note">
           點一下格子部署目前選擇的兵種，預設朝上；按住格子往上下左右滑動，放開時就朝那個方向。對已部署的單位滑動可以改變朝向；同一工具再點一次即清除。確定有單位但還沒決定兵種時，可先放「佔位」：它和單位一樣會自動排除周圍與已滿的列、欄、陣地，但不算兵力、不覆蓋敵軍，之後選兵種點它即可替換。鍵盤可用方向鍵部署或轉向。提示會先說明理由，使用提示仍可解鎖下一關。
         </p>
+        <p className="rule-note">佈陣模式沒有敵軍、不分兵種，只要符合第 1、2 條即可過關。</p>
       </Modal>
 
       <Modal open={dialog === 'levels'} title={MODE_NAME[picker]} onClose={() => setDialog(null)} wide>
         <p className="picker-intro">
           {picker === 'story'
             ? '新手教學：每章加入一種新兵種，從基本佈陣一路學到六兵種齊上陣。'
-            : `${CAMPAIGN_CHAPTERS.length} 大關、每關 10 小關，敵軍與兵種組合逐步加難。建議先完成劇情模式。`}
+            : picker === 'formation'
+              ? `沒有敵軍、不分兵種，只要把 20 個單位放到正確位置。${FORMATION_CHAPTERS.length} 大關、每關 10 小關，推理難度逐步提升。`
+              : `${CAMPAIGN_CHAPTERS.length} 大關、每關 10 小關，敵軍與兵種組合逐步加難。建議先完成劇情模式。`}
         </p>
         <button className="btn primary wide picker-continue" onClick={() => openLevel(pickerEntry)}>
           {pickerDone === pickerBank.length ? '重玩最後一關' : pickerDone ? '繼續' : '開始'} ·{' '}

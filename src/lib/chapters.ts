@@ -38,5 +38,26 @@ export const CAMPAIGN_CHAPTERS: Chapter[] = CAMPAIGN.map(([name, units, intro], 
   intro,
 }));
 
-export const chapterIndex = (chapters: Chapter[], level: number) =>
+// Formation: no enemies or unit types; chapters only mark rising logic difficulty.
+const FORMATION: [string, string][] = [
+  ['長蛇', '一字長蛇：每列、每欄、每個陣地各部署 2 個單位，彼此不能相鄰。'],
+  ['二龍', '二龍出水：記得斜角相鄰也不行。'],
+  ['三才', '三才陣：從空位最少的陣地下手。'],
+  ['四門', '四門陣：留意陣地與列、欄的交集。'],
+  ['五行', '五行陣：同時比對列與陣地剩下的名額。'],
+  ['六合', '六合陣：推理難度再升一級。'],
+  ['七星', '七星陣：排除要看得更遠。'],
+  ['八卦', '八卦陣：陣地形狀越來越刁鑽。'],
+  ['九宮', '九宮陣：多個陣地的組合推理成為關鍵。'],
+  ['十面', '十面埋伏：最終的佈陣考驗。'],
+];
+export const FORMATION_CHAPTERS: Chapter[] = FORMATION.map(([name, intro], i) => ({
+  name,
+  from: i * 10,
+  to: i * 10 + 9,
+  units: [],
+  intro,
+}));
+
+export const chapterIndex =(chapters: Chapter[], level: number) =>
   chapters.findIndex((c) => level >= c.from && level <= c.to);

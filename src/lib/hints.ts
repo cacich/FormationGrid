@@ -1,6 +1,6 @@
 import { nextDoubleDeduction } from './double-logic.ts';
 import { solveAssignment, solutionCells, type Constraint } from './assign.ts';
-import { MARK, NOTE, occupies, piecesOf, positionBoard, type Board, type Level } from './game.ts';
+import { FLAG, MARK, NOTE, occupies, piecesOf, positionBoard, type Board, type Level } from './game.ts';
 import { DIR_NAMES, UNITS, decodePiece, encodePiece, type Piece } from './units.ts';
 
 export type Hint = {
@@ -43,6 +43,26 @@ export function nextHint(
       reason: '亮起的排除記號擋住了必須部署單位的位置。先清除這個記號。',
       apply: [{ cell: wrongNote, value: '' }],
     };
+
+  if (level.kind === 'formation') {
+    const step = nextDoubleDeduction(puzzleForHints(level), positionBoard(level, board, auto));
+    if (step)
+      return {
+        cells: step.cells,
+        focus: step.focus,
+        reason: step.reason,
+        apply: step.cells.map((cell) => ({ cell, value: step.value === 2 ? FLAG : NOTE })),
+      };
+    const open = [...solution].find((i) => !occupies(board[i]));
+    return open === undefined
+      ? null
+      : {
+          cells: [open],
+          focus: [],
+          reason: '這是答案提示：亮起的格子需要部署單位。',
+          apply: [{ cell: open, value: FLAG }],
+        };
+  }
 
   let completion = solveAssignment(level, fixedFrom(pieces));
   if (!completion) {

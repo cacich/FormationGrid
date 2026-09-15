@@ -1,9 +1,10 @@
 import { LEVELS } from './level-data.ts';
 import { CAMPAIGN_LEVELS } from './campaign-data.ts';
+import { FORMATION_LEVELS } from './formation-data.ts';
 import { decodePiece } from './units.ts';
-import { MARK, NOTE, type Level } from './game.ts';
+import { FLAG, MARK, NOTE, type Level } from './game.ts';
 
-export type Mode = 'story' | 'campaign';
+export type Mode = 'story' | 'campaign' | 'formation';
 export type Selection = { mode: Mode; level: number };
 export type Session = { board: string[]; elapsed: number; hints: number };
 export type Progress = {
@@ -15,8 +16,12 @@ export type Progress = {
 };
 export const SAVE_KEY = 'zhen-grid-progress-v1';
 export const PREFS_KEY = 'zhen-grid-prefs-v1';
-export const BANKS: Record<Mode, Level[]> = { story: LEVELS, campaign: CAMPAIGN_LEVELS };
-const ALL_LEVELS = [...LEVELS, ...CAMPAIGN_LEVELS];
+export const BANKS: Record<Mode, Level[]> = {
+  story: LEVELS,
+  campaign: CAMPAIGN_LEVELS,
+  formation: FORMATION_LEVELS,
+};
+const ALL_LEVELS = Object.values(BANKS).flat();
 
 export const emptyProgress = (): Progress => ({
   version: 1,
@@ -40,7 +45,7 @@ export function unlockedLevel(progress: Progress, mode: Mode = 'story') {
 export const completedIn = (progress: Progress, mode: Mode) =>
   BANKS[mode].filter((l) => progress.completed.includes(l.id)).length;
 export const canOpen = (progress: Progress, { mode, level }: Selection) =>
-  (mode === 'story' || mode === 'campaign') &&
+  Object.hasOwn(BANKS, mode) &&
   Number.isInteger(level) &&
   level >= 0 &&
   level < BANKS[mode].length &&
@@ -69,7 +74,7 @@ export function recordSession(
 const count = (x: unknown) =>
   Number.isSafeInteger(x) && Number(x) >= 0 ? Number(x) : 0;
 const validCell = (v: unknown) =>
-  v === '' || v === NOTE || v === MARK || (typeof v === 'string' && decodePiece(v) !== null);
+  v === '' || v === NOTE || v === MARK || v === FLAG || (typeof v === 'string' && decodePiece(v) !== null);
 
 export function parseProgress(raw: unknown): Progress {
   if (!raw || typeof raw !== 'object' || (raw as Progress).version !== 1)

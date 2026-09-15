@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { LEVELS } from '../src/lib/level-data.ts';
 import { CAMPAIGN_LEVELS } from '../src/lib/campaign-data.ts';
+import { FORMATION_LEVELS } from '../src/lib/formation-data.ts';
 import { HARD } from '../src/lib/source/hard-data.ts';
 import { GRIDS } from '../src/lib/source/grid-data.ts';
+import { FORMATION_GRIDS } from '../src/lib/source/grid-v2-data.ts';
 import { doubleSolutions, touching } from '../src/lib/double-logic.ts';
 import { solutionCells, solveAssignment } from '../src/lib/assign.ts';
 import { gridFingerprint, logicalDoubleSolve } from '../src/lib/proof.ts';
-import { CAMPAIGN_CHAPTERS, STORY_CHAPTERS } from '../src/lib/chapters.ts';
+import { CAMPAIGN_CHAPTERS, FORMATION_CHAPTERS, STORY_CHAPTERS } from '../src/lib/chapters.ts';
 import {
+  FLAG,
   MARK,
   answerBoard,
   automaticExclusions,
@@ -142,7 +145,43 @@ for (const [index, grid] of GRIDS.entries()) {
   assert.ok(level.quotas.every((q, u) => q === 0 || chapter.units.includes(u as 0)));
   verifyLevel(level, grid);
 }
-const ids = [...LEVELS, ...CAMPAIGN_LEVELS].map((l) => l.id);
+// Formation: 100 enemy-free levels on a third grid bank; only positions are solved.
+assert.equal(FORMATION_GRIDS.length, 100);
+assert.equal(FORMATION_LEVELS.length, 100);
+assert.equal(FORMATION_CHAPTERS.at(-1)!.to, FORMATION_LEVELS.length - 1);
+{
+  const all = [...HARD, ...GRIDS, ...FORMATION_GRIDS].map((g) => gridFingerprint(g.regions));
+  assert.equal(new Set(all).size, all.length, 'formation grids repeat no earlier grid');
+  let last = 0;
+  for (const [index, grid] of FORMATION_GRIDS.entries()) {
+    const level = FORMATION_LEVELS[index],
+      n = level.regions.length,
+      cells = solutionCells(level);
+    assert.equal(level.kind, 'formation');
+    assert.equal(level.source, grid.id);
+    assert.deepEqual(level.regions, grid.regions);
+    assert.deepEqual(level.solution, grid.solution);
+    assert.equal(level.enemies.length, 0);
+    const proof = logicalDoubleSolve(grid);
+    assert.ok(proof.solved, `${level.id}: logical`);
+    assert.equal(proof.score, grid.difficulty.score);
+    assert.ok(proof.score >= last, `${level.id}: difficulty ramps`);
+    last = proof.score;
+    const found = doubleSolutions(level);
+    assert.equal(found.length, 1, `${level.id}: unique positions`);
+    assert.deepEqual(found[0], level.solution);
+    const answer = answerBoard(level);
+    assert.ok(isSolved(level, answer));
+    answer[cells[0]] = '';
+    assert.ok(!isSolved(level, answer), `${level.id}: 19 units is not solved`);
+    assert.ok(isSolved(level, playWithHints(level, emptyBoard(n))), `${level.id}: hints from empty`);
+    const messy = emptyBoard(n);
+    messy[cells[0]] = 'x';
+    messy[[...Array(n * n).keys()].find((i) => !cells.includes(i))!] = FLAG;
+    assert.ok(isSolved(level, playWithHints(level, messy)), `${level.id}: hint cleanup`);
+  }
+}
+const ids = [...LEVELS, ...CAMPAIGN_LEVELS, ...FORMATION_LEVELS].map((l) => l.id);
 assert.equal(new Set(ids).size, ids.length, 'level ids unique across modes');
 
 // Saves: malformed boards dropped, old numeric `last` means story, modes unlock separately.
@@ -171,6 +210,15 @@ assert.deepEqual(
   withMark,
   'placeholders survive saves',
 );
+assert.ok(canOpen(progress, { mode: 'formation', level: 0 }));
+assert.ok(!canOpen(progress, { mode: 'formation', level: 1 }), 'formation unlocks on its own');
+const flagBoard = answerBoard(FORMATION_LEVELS[0]);
+const formationDone = parseProgress(
+  recordSession(progress, FORMATION_LEVELS[0].id, { board: flagBoard, elapsed: 5, hints: 0 }, true),
+);
+assert.deepEqual(formationDone.records[FORMATION_LEVELS[0].id].board, flagBoard, 'formation units survive saves');
+assert.equal(unlockedLevel(formationDone, 'formation'), 1);
+assert.ok(!canOpen(progress, { mode: 'nope' as 'story', level: 0 }));
 assert.equal(parseProgress({ ...advanced, last: { mode: 'campaign', level: 5 } }).last, null, 'locked last dropped');
 assert.equal(unlockedLevel(emptyProgress()), 0);
 assert.throws(() => parseProgress({ version: 99 }));
@@ -193,4 +241,6 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 assert.ok(html.includes('rel="manifest"') && html.includes('rel="apple-touch-icon"'));
 assert.ok(readFileSync(publicFile('sw.js'), 'utf8').includes("addEventListener('fetch'"));
 
-console.log(`verified ${LEVELS.length} story + ${CAMPAIGN_LEVELS.length} campaign levels, manifest and icons`);
+console.log(
+  `verified ${LEVELS.length} story + ${CAMPAIGN_LEVELS.length} campaign + ${FORMATION_LEVELS.length} formation levels, manifest and icons`,
+);

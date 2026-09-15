@@ -13,15 +13,19 @@ export type Level = {
   quotas: number[];
   // One verified answer, as piece codes in solution-cell order.
   answer: string[];
+  // Formation levels have no enemies or unit types: only positions are solved.
+  kind?: 'formation';
 };
 
 // Board cells: '' empty, 'x' exclusion note, 'o' placeholder (a unit of undecided
-// type), otherwise a piece code like 'A2'.
+// type), 'f' typeless formation unit, otherwise a piece code like 'A2'.
 export type Board = string[];
 export const NOTE = 'x';
 export const MARK = 'o';
+export const FLAG = 'f';
 // Placeholders count as units for positions, but not for quotas or coverage.
-export const occupies = (code: string) => code === MARK || decodePiece(code) !== null;
+export const occupies = (code: string) =>
+  code === MARK || code === FLAG || decodePiece(code) !== null;
 const occupiedCells = (board: Board) => board.flatMap((code, i) => (occupies(code) ? [i] : []));
 export const emptyBoard = (size: number): Board => Array(size * size).fill('');
 
@@ -77,6 +81,11 @@ export function conflictsFor(level: Level, board: Board) {
 }
 
 export function isSolved(level: Level, board: Board) {
+  if (level.kind === 'formation')
+    return (
+      occupiedCells(board).length === level.regions.length * 2 &&
+      conflictsFor(level, board).size === 0
+    );
   const counts = usedCounts(board),
     covered = coveredCells(level, board);
   return (
@@ -117,6 +126,8 @@ export function automaticExclusions(level: Level, board: Board, enabled = true) 
 
 export const answerBoard = (level: Level): Board => {
   const board = emptyBoard(level.regions.length);
-  solutionCells(level).forEach((cell, k) => (board[cell] = level.answer[k]));
+  solutionCells(level).forEach(
+    (cell, k) => (board[cell] = level.kind === 'formation' ? FLAG : level.answer[k]),
+  );
   return board;
 };

@@ -447,6 +447,10 @@ h1 {
 .piece-K { --piece: #9a5b25; }
 .piece-M { --piece: #3d3f8f; }
 .piece-G { --piece: #9b2f45; }
+.piece-F { --piece: var(--navy); }
+.rule-note + .rule-note {
+  margin-top: 8px;
+}
 .piece-glyph {
   position: relative;
   font-family: var(--serif);

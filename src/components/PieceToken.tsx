@@ -47,6 +47,15 @@ export function RangeDiagram({ unit }: { unit: UnitId }) {
   );
 }
 
+// Typeless unit used in formation mode: no facing, no range.
+export function FlagToken({ conflict }: { conflict?: boolean }) {
+  return (
+    <span className={`piece piece-F ${conflict ? 'conflict' : ''}`} aria-hidden="true">
+      <span className="piece-glyph">旗</span>
+    </span>
+  );
+}
+
 export function MarkToken({ conflict }: { conflict?: boolean }) {
   return (
     <span className={`mark-token ${conflict ? 'conflict' : ''}`} aria-hidden="true">
